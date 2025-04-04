@@ -31,10 +31,9 @@ func PrintRequestLine(r *Request) {
 }
 
 func parseLineRequest(r *Request, data []byte) (bytesParsed int, err error) {
-	//fmt.Printf("Buffer content stage 3: %q\n", data)
+
 	request := string(data)
-	//TODO: modify to only check 1 "\r\n" and do nothing with the rest*************************************************** maybe delete line 45
-	//check if request has 4 "\r\n" in it
+	//TODO: modify to only check 1 "\r\n" and do nothing with the rest*********************** maybe delete line 42
 	if strings.Count(request, "\r\n") < 4 {
 		return 0, nil
 	}
@@ -53,9 +52,6 @@ func parseLineRequest(r *Request, data []byte) (bytesParsed int, err error) {
 	if len(parts) != 3 {
 		return 0, fmt.Errorf("invalid request line, must contain 3 parts")
 	}
-	// for i := 0; i < len(parts); i++ {
-	// 	fmt.Println(parts[i])
-	// }
 
 	//check if Method has only capital letters
 	for i := 0; i < len(parts[0]); i++ {
@@ -80,7 +76,7 @@ func parseLineRequest(r *Request, data []byte) (bytesParsed int, err error) {
 func (r *Request) parse(data []byte) (int, error) {
 	bytesParsed := 0
 	var err error
-	//fmt.Printf("Buffer content stage 2: %q\n", data)
+
 	for {
 		switch r.state {
 		case requestStateInitialized: // "initialized" state
@@ -119,7 +115,6 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 			return nil, err
 		}
 		readToIndex += numBytesRead
-		//fmt.Printf("Buffer content stage 1: %q\n", buf)
 
 		parsedBytes, err := r.parse(buf[:readToIndex])
 		if err != nil {
