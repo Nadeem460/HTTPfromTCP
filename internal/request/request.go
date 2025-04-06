@@ -4,14 +4,16 @@ import (
 	"fmt"
 	"httpfromtcp/internal/headers"
 	"io"
+	"strconv"
 	"strings"
 )
 
 const (
 	bufferSize                 = 8
 	requestStateInitialized    = 1
-	requestStateDone           = 2
-	requestStateParsingHeaders = 3
+	requestStateParsingHeaders = 2
+	requestStateParseingBody   = 3
+	requestStateDone           = 4
 )
 
 type Request struct {
@@ -113,10 +115,40 @@ func (r *Request) parseSingle(data []byte) (int, error) {
 			return bytesParsed, err
 		}
 		if done {
-			r.state = requestStateDone
+			r.state = requestStateParseingBody
 			return bytesParsed, nil
 		}
 		return bytesParsed, nil
+	case requestStateParseingBody: // "parsing body" state
+		// Check if there is "contect-length" header
+		contentLengthStr, ok := r.Headers.Get("content-length")
+		if ok {
+			// If there is, read the body until the content length is reached
+			// Convert contentLength to int
+			contentLength, err := strconv.Atoi(contentLengthStr)
+			if err != nil {
+				return bytesParsed, fmt.Errorf("invalid content-length value: %v", err)
+			}
+
+			// Check if the body is complete
+			if len(data) < contentLength {
+				return bytesParsed, nil
+			} else if len(data) > contentLength {
+				return bytesParsed, fmt.Errorf("error: body is greater than content-length value")
+			}
+
+			// If reached here, the body is equal to content-length value
+			// Copy the body to the request and change the state to done
+			r.Body = data[:contentLength]
+			r.state = requestStateDone
+			return bytesParsed + contentLength, nil
+		} else {
+			// If there is no content length, go to done state
+			r.state = requestStateDone
+			return bytesParsed + len(data), nil
+		}
+	case requestStateDone: // "done" state
+		return 0, fmt.Errorf("error: request is already done")
 	default: // unknown state
 		return 0, fmt.Errorf("error: unknown state")
 	}
@@ -127,6 +159,7 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 	var r = Request{
 		RequestLine: RequestLine{},
 		Headers:     headers.NewHeaders(),
+		Body:        make([]byte, 0),
 		state:       requestStateInitialized,
 	}
 	buf := make([]byte, bufferSize)
@@ -139,7 +172,9 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 		numBytesRead, err := reader.Read(buf[readToIndex:])
 		if err != nil {
 			if err == io.EOF {
-				r.state = requestStateDone // TODO: Maybe end of stream - doesnt mean request is done
+				if r.state != requestStateDone {
+					return nil, fmt.Errorf("error: unexpected end of stream")
+				}
 				break
 			}
 			return nil, err

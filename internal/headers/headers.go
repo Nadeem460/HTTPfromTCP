@@ -13,25 +13,29 @@ func NewHeaders() Headers {
 	return make(Headers)
 }
 
+func (h Headers) Get(key string) (string, bool) {
+	key = strings.ToLower(key)
+	value, ok := h[key]
+	return value, ok
+}
+
 func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	bytesConsumed := 0
-	lastHeader := false
 	fieldLine := string(data)
 
-	// Check if the field line is equal to "\r\n"
-	if fieldLine == "\r\n" {
-		return 2, true, nil // MAYBE NEED TO RETURN 0
+	// Check if the field line starts with "\r\n" - meaning the end of headers (field-lines)
+	if strings.HasPrefix(fieldLine, "\r\n") {
+		return 2, true, nil
 	}
 
 	CRLFCount := strings.Count(fieldLine, "\r\n")
 	//check if request has at least "\r\n" in it and trim accordingly
 	if CRLFCount == 2 {
-		lastHeader = true
-		fieldLine = strings.TrimSuffix(fieldLine, "\r\n\r\n")
+		parts := strings.Split(fieldLine, "\r\n\r\n")
+		fieldLine = parts[0]
 	} else if CRLFCount == 1 {
 		parts := strings.Split(fieldLine, "\r\n")
 		fieldLine = parts[0]
-		// fieldLine = strings.TrimSuffix(fieldLine, "\r\n")
 	} else {
 		return bytesConsumed, false, nil
 	}
@@ -79,11 +83,6 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 
 	// Calculate the number of bytes consumed
 	bytesConsumed = len(key) + len(value) + 4 // 4 for ": " and "\r\n"
-
-	// Check if the field-line is complete
-	if lastHeader {
-		//bytesConsumed += 2 // for the final "\r\n" CHECK THIS IN FUTURE
-	}
 
 	//print h for debugging
 	//fmt.Println("Headers: ", h)

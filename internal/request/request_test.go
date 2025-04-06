@@ -85,12 +85,8 @@ func TestFieldLineParse(t *testing.T) {
 		numBytesPerRead: 3,
 	}
 	r, err = RequestFromReader(reader)
-	require.NoError(t, err)
-	require.NotNil(t, r)
-	assert.Equal(t, "localhost:42069", r.Headers["host"])
-	assert.Equal(t, "curl/7.81.0", r.Headers["user-agent"])
-	assert.Equal(t, "*/*", r.Headers["accept"])
-	//assert.Equal(t, requestStateParsingHeaders, r.state) // End of stream changes state to done
+	require.Error(t, err)
+	require.Nil(t, r)
 
 	// Test: Malformed Header
 	reader = &chunkReader{
