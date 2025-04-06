@@ -29,7 +29,9 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 		lastHeader = true
 		fieldLine = strings.TrimSuffix(fieldLine, "\r\n\r\n")
 	} else if CRLFCount == 1 {
-		fieldLine = strings.TrimSuffix(fieldLine, "\r\n")
+		parts := strings.Split(fieldLine, "\r\n")
+		fieldLine = parts[0]
+		// fieldLine = strings.TrimSuffix(fieldLine, "\r\n")
 	} else {
 		return bytesConsumed, false, nil
 	}
@@ -84,7 +86,7 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	}
 
 	//print h for debugging
-	fmt.Println("Headers: ", h)
+	//fmt.Println("Headers: ", h)
 
 	return bytesConsumed, false, nil
 }

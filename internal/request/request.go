@@ -2,18 +2,22 @@ package request
 
 import (
 	"fmt"
+	"httpfromtcp/internal/headers"
 	"io"
 	"strings"
 )
 
 const (
-	bufferSize              = 8
-	requestStateInitialized = 1
-	requestStateDone        = 2
+	bufferSize                 = 8
+	requestStateInitialized    = 1
+	requestStateDone           = 2
+	requestStateParsingHeaders = 3
 )
 
 type Request struct {
 	RequestLine RequestLine
+	Headers     headers.Headers
+	Body        []byte
 	state       int
 }
 
@@ -28,13 +32,19 @@ func PrintRequestLine(r *Request) {
 	fmt.Println("- Method: " + r.RequestLine.Method)
 	fmt.Println("- Target: " + r.RequestLine.RequestTarget)
 	fmt.Println("- Version: " + r.RequestLine.HttpVersion)
+	fmt.Println("Headers:")
+	for key, value := range r.Headers {
+		fmt.Printf("- %s: %s\n", key, value)
+	}
+	//fmt.Println("End of request")
+	//fmt.Println("====================================")
 }
 
 func parseLineRequest(r *Request, data []byte) (bytesParsed int, err error) {
 
 	request := string(data)
-	//TODO: modify to only check 1 "\r\n" and do nothing with the rest*********************** maybe delete line 42
-	if strings.Count(request, "\r\n") < 4 {
+	//Check at least one "\r\n" and do nothing with the rest
+	if strings.Count(request, "\r\n") < 1 {
 		return 0, nil
 	}
 
@@ -49,9 +59,6 @@ func parseLineRequest(r *Request, data []byte) (bytesParsed int, err error) {
 	}
 
 	parts := strings.Split(requestLine, " ")
-	if len(parts) != 3 {
-		return 0, fmt.Errorf("invalid request line, must contain 3 parts")
-	}
 
 	//check if Method has only capital letters
 	for i := 0; i < len(parts[0]); i++ {
@@ -68,28 +75,50 @@ func parseLineRequest(r *Request, data []byte) (bytesParsed int, err error) {
 	r.RequestLine.Method = parts[0]
 	r.RequestLine.RequestTarget = parts[1]
 	r.RequestLine.HttpVersion = "1.1"
-	r.state = requestStateDone
-	bytesParsed = len(request)
+	r.state = requestStateParsingHeaders
+	bytesParsed = len(requestLine) + 2 // +2 for "\r\n"
 	return bytesParsed, nil
 }
 
 func (r *Request) parse(data []byte) (int, error) {
+	totalBytesParsed := 0
+
+	for r.state != requestStateDone {
+		bytesParsed, err := r.parseSingle(data[totalBytesParsed:])
+		if err != nil {
+			return totalBytesParsed, err
+		}
+		totalBytesParsed += bytesParsed
+		if bytesParsed == 0 {
+			return totalBytesParsed, nil
+		}
+	}
+	return totalBytesParsed, nil
+}
+
+func (r *Request) parseSingle(data []byte) (int, error) {
 	bytesParsed := 0
 	var err error
 
-	for {
-		switch r.state {
-		case requestStateInitialized: // "initialized" state
-			bytesParsed, err = parseLineRequest(r, data)
-			if err != nil {
-				return bytesParsed, err
-			}
-			return bytesParsed, nil
-		case requestStateDone: // "done" state
-			return 0, fmt.Errorf("error: trying to read data in a done state")
-		default: // unknown state
-			return 0, fmt.Errorf("error: unknown state")
+	switch r.state {
+	case requestStateInitialized: // "initialized" state
+		bytesParsed, err = parseLineRequest(r, data)
+		if err != nil {
+			return bytesParsed, err
 		}
+		return bytesParsed, nil
+	case requestStateParsingHeaders: // "parsing headers" state
+		bytesParsed, done, err := r.Headers.Parse(data)
+		if err != nil {
+			return bytesParsed, err
+		}
+		if done {
+			r.state = requestStateDone
+			return bytesParsed, nil
+		}
+		return bytesParsed, nil
+	default: // unknown state
+		return 0, fmt.Errorf("error: unknown state")
 	}
 }
 
@@ -97,6 +126,7 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 	readToIndex := 0
 	var r = Request{
 		RequestLine: RequestLine{},
+		Headers:     headers.NewHeaders(),
 		state:       requestStateInitialized,
 	}
 	buf := make([]byte, bufferSize)
@@ -109,7 +139,7 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 		numBytesRead, err := reader.Read(buf[readToIndex:])
 		if err != nil {
 			if err == io.EOF {
-				r.state = requestStateDone
+				r.state = requestStateDone // TODO: Maybe end of stream - doesnt mean request is done
 				break
 			}
 			return nil, err
