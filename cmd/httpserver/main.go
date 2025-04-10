@@ -4,7 +4,6 @@ import (
 	"httpfromtcp/internal/request"
 	"httpfromtcp/internal/response"
 	"httpfromtcp/internal/server"
-	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -14,27 +13,35 @@ import (
 const port = 42069
 
 func main() {
-	handler := func(w io.Writer, req *request.Request) *server.HandlerError {
-		// If request path is /yourproblem return a 400 and a message "Your problem is not my problem\n"
-		// If request path is /myproblem return a 500 and a message "Woopsie, my bad\n"
-		// Otherwise, it should just write the string "All good, frfr\n" to the response body.
-		if req.RequestLine.RequestTarget == "/yourproblem" {
-			return &server.HandlerError{
-				Code:    int(response.StatusBadRequest),
-				Message: "Your problem is not my problem\n",
+	handler := func(w *response.Writer, req *request.Request) {
+		switch req.RequestLine.RequestTarget {
+		case "/yourproblem":
+			w.WriteStatusLine(response.StatusBadRequest)
+			data := response.PageData{
+				Title:   "400 Bad Request",
+				Heading: "Bad Request",
+				Message: "Your request honestly kinda sucked.",
 			}
-		} else if req.RequestLine.RequestTarget == "/myproblem" {
-			return &server.HandlerError{
-				Code:    int(response.StatusInternalServerError),
-				Message: "Woopsie, my bad\n",
+			w.WriteHeaders(response.GetDefaultHeaders(data.ContentLength()))
+			w.WriteBody(data)
+		case "/myproblem":
+			w.WriteStatusLine(response.StatusInternalServerError)
+			data := response.PageData{
+				Title:   "500 Internal Server Error",
+				Heading: "Internal Server Error",
+				Message: "Okay, you know what? This one is on me.",
 			}
-		} else {
-			_, err := w.Write([]byte("All good, frfr\n"))
-			if err != nil {
-				log.Println("Error writing response:", err)
-				return nil
+			w.WriteHeaders(response.GetDefaultHeaders(data.ContentLength()))
+			w.WriteBody(data)
+		default:
+			w.WriteStatusLine(response.StatusOK)
+			data := response.PageData{
+				Title:   "200 OK",
+				Heading: "Success!",
+				Message: "Your request was an absolute banger.",
 			}
-			return nil
+			w.WriteHeaders(response.GetDefaultHeaders(data.ContentLength()))
+			w.WriteBody(data)
 		}
 	}
 

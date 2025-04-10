@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bytes"
 	"fmt"
 	"httpfromtcp/internal/request"
 	"httpfromtcp/internal/response"
@@ -34,7 +33,7 @@ func (e *HandlerError) Write(w io.Writer) {
 	fmt.Fprintf(w, "%s", e.Message) //ONLY ERROR MESSAGE
 }
 
-type Handler func(w io.Writer, req *request.Request) *HandlerError
+type Handler func(w *response.Writer, req *request.Request)
 
 func Serve(port int, h Handler) (*Server, error) {
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
@@ -97,40 +96,10 @@ func (s *Server) handle(conn net.Conn) {
 		return
 	}
 
-	// Create a new buffer for the handler to write to
-	buf := &bytes.Buffer{}
+	// Create a new response writer
+	w := response.NewWriter(conn)
 
-	// Call the handler with the buffer and request
-	// if the handler returns an error, write the error response to the buffer
-	handlerErr := s.handler(buf, req)
-	if handlerErr != nil {
-		handlerErr.Write(buf)
-		err = response.WriteStatusLine(conn, response.StatusCode(handlerErr.Code))
-		if err != nil {
-			log.Println("Error writing status line:", err)
-			return
-		}
-	} else {
-		// If the handler doesn't return an error, write the status line from buffer
-		err = response.WriteStatusLine(conn, response.StatusOK)
-		if err != nil {
-			log.Println("Error writing status line:", err)
-			return
-		}
-	}
+	// Call the handler with the response writer and request
+	s.handler(w, req)
 
-	// Create default headers and write them
-	headers := response.GetDefaultHeaders(buf.Len())
-	err = response.WriteHeaders(conn, headers)
-	if err != nil {
-		log.Println("Error writing headers:", err)
-		return
-	}
-
-	// Write the response body from the handler's buffer
-	_, err = buf.WriteTo(conn)
-	if err != nil {
-		log.Println("Error writing response body:", err)
-		return
-	}
 }
