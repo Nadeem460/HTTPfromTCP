@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	bufferSize                 = 8
+	bufferSize                 = 4096
 	requestStateInitialized    = 1
 	requestStateParsingHeaders = 2
 	requestStateParseingBody   = 3

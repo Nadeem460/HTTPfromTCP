@@ -120,6 +120,40 @@ func (w *Writer) WriteBody(data PageData) error {
 	return t.Execute(w, data)
 }
 
+func (w *Writer) WriteChunkedBody(p []byte) (int, error) {
+	// Check if the writer is in the correct state
+	if w.writerState != WriterStateBody {
+		return 0, fmt.Errorf("incorrect writer state, should write body last")
+	}
+
+	// Write the chunked body
+	n, err := fmt.Fprintf(w, "%x\r\n", len(p))
+	if err != nil {
+		return n, err
+	}
+	n2, err := w.Write(p)
+	if err != nil {
+		return n + n2, err
+	}
+	n3, err := fmt.Fprint(w, "\r\n")
+	return n + n2 + n3, err
+}
+
+func (w *Writer) WriteChunkedBodyDone() (int, error) {
+	// Check if the writer is in the correct state
+	if w.writerState != WriterStateBody {
+		return 0, fmt.Errorf("incorrect writer state, should write body last")
+	}
+
+	// Write the chunked body done
+	n, err := fmt.Fprint(w, "0\r\n\r\n")
+	if err == nil {
+		// Set the writer state to status line after writing the chunked body done
+		w.writerState = WriterStateStatusLine
+	}
+	return n, err
+}
+
 func GetDefaultHeaders(contentLen int) headers.Headers {
 	return headers.Headers{
 		"Content-Length": strconv.Itoa(contentLen), // fmt.Sprintf("%d", contentLen) is generally prefered but strconv.Itoa is faster

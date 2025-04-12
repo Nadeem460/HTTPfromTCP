@@ -33,7 +33,7 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	if CRLFCount == 2 {
 		parts := strings.Split(fieldLine, "\r\n\r\n")
 		fieldLine = parts[0]
-	} else if CRLFCount == 1 {
+	} else if CRLFCount >= 1 { //store the first field-line and throw the rest
 		parts := strings.Split(fieldLine, "\r\n")
 		fieldLine = parts[0]
 	} else {

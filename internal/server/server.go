@@ -92,7 +92,7 @@ func (s *Server) handle(conn net.Conn) {
 	if err != nil {
 		log.Println("Error parsing request:", err)
 		// Handle the error (e.g., send an error response)
-		// conn.Write([]byte("HTTP/1.1 400 Bad Request\r\n\r\n"))
+		//conn.Write([]byte("HTTP/1.1 400 Bad Request\r\n\r\n"))
 		return
 	}
 
