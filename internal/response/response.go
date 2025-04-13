@@ -21,6 +21,7 @@ const (
 	WriterStateStatusLine = iota
 	WriterStateHeaders
 	WriterStateBody
+	WriterStateTrailers
 )
 
 // Define the template structure for dynamic content
@@ -123,7 +124,7 @@ func (w *Writer) WriteBody(data PageData) error {
 func (w *Writer) WriteChunkedBody(p []byte) (int, error) {
 	// Check if the writer is in the correct state
 	if w.writerState != WriterStateBody {
-		return 0, fmt.Errorf("incorrect writer state, should write body last")
+		return 0, fmt.Errorf("incorrect writer state, should write body third")
 	}
 
 	// Write the chunked body
@@ -142,16 +143,36 @@ func (w *Writer) WriteChunkedBody(p []byte) (int, error) {
 func (w *Writer) WriteChunkedBodyDone() (int, error) {
 	// Check if the writer is in the correct state
 	if w.writerState != WriterStateBody {
-		return 0, fmt.Errorf("incorrect writer state, should write body last")
+		return 0, fmt.Errorf("incorrect writer state, should write body third")
 	}
 
 	// Write the chunked body done
 	n, err := fmt.Fprint(w, "0\r\n\r\n")
 	if err == nil {
-		// Set the writer state to status line after writing the chunked body done
-		w.writerState = WriterStateStatusLine
+		// Set the writer state to trailers after writing the chunked body
+		w.writerState = WriterStateTrailers
 	}
 	return n, err
+}
+
+func (w *Writer) WriteTrailers(h headers.Headers) error {
+	// Check if the writer is in the correct state
+	if w.writerState != WriterStateTrailers {
+		return fmt.Errorf("incorrect writer state, should write trailers last")
+	}
+
+	// Write the headers
+	for key, value := range h {
+		if _, err := fmt.Fprintf(w, "%s: %s\r\n", key, value); err != nil {
+			return err
+		}
+	}
+	_, err := fmt.Fprint(w, "\r\n")
+	if err == nil {
+		// Set the writer state to status line after writing the trailers
+		w.writerState = WriterStateStatusLine
+	}
+	return err
 }
 
 func GetDefaultHeaders(contentLen int) headers.Headers {

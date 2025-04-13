@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"flag"
+	"fmt"
 	"httpfromtcp/internal/headers"
 	"httpfromtcp/internal/request"
 	"httpfromtcp/internal/response"
@@ -65,10 +68,12 @@ func main() {
 		// Handle the request here
 		// Trim the "/httpbin/" prefix
 		target := strings.TrimPrefix(req.RequestLine.RequestTarget, "/httpbin/")
-		headers := headers.Headers{
+		// Create Headers
+		chunkedHeaders := headers.Headers{
 			"Content-Type":      "text/html",
 			"Transfer-Encoding": "chunked",
 			"Connection":        "close",
+			"Trailer":           "X-Content-SHA256, X-Content-Length",
 		}
 		// Get request to httpbin.org
 		resp, err := http.Get("https://httpbin.org/" + target)
@@ -84,10 +89,13 @@ func main() {
 			return
 		}
 
+		totalBytesRead := 0
+		// store the full response from httpbin.org in a bytes.Buffer{}
+		httpbinResponseBody := &bytes.Buffer{}
 		// read the response from httpbin.org and store it in a 1024 bytes buffer
 		buf := make([]byte, 1024)
 		for {
-			n, err := resp.Body.Read(buf)
+			bytesRead, err := resp.Body.Read(buf)
 			if err == io.EOF {
 				break
 			}
@@ -102,10 +110,14 @@ func main() {
 				w.WriteBody(data)
 				return
 			}
-			log.Println("Bytes Read: ", n) //watchout n is in hex
+			// store read bytes in totalBytesRead
+			totalBytesRead += bytesRead
+			log.Println("Bytes Read: ", bytesRead) //watchout n is in hex
+			// append buf to responseBody - full response buffer
+			httpbinResponseBody.Write(buf[:bytesRead])
 			// Write each chunk read
 			w.WriteStatusLine(response.StatusOK)
-			w.WriteHeaders(headers)
+			w.WriteHeaders(chunkedHeaders)
 			_, err = w.WriteChunkedBody(buf)
 			if err != nil {
 				w.WriteStatusLine(response.StatusInternalServerError)
@@ -127,6 +139,26 @@ func main() {
 				Title:   "500 Internal Server Error",
 				Heading: "Internal Server Error",
 				Message: "Couldn't write CRLF to end the body!",
+			}
+			w.WriteHeaders(response.GetDefaultHeaders(data.ContentLength()))
+			w.WriteBody(data)
+			return
+		}
+		// Calculate the hash of the response body
+		hash := sha256.Sum256(httpbinResponseBody.Bytes())
+		// Create Trailer Headers
+		trailers := headers.Headers{
+			"X-Content-SHA256": fmt.Sprintf("%x", hash),
+			"X-Content-Length": fmt.Sprintf("%d", totalBytesRead),
+		}
+		// Write Trailer Headers
+		err = w.WriteTrailers(trailers)
+		if err != nil {
+			w.WriteStatusLine(response.StatusInternalServerError)
+			data := response.PageData{
+				Title:   "500 Internal Server Error",
+				Heading: "Internal Server Error",
+				Message: "Couldn't write trailers",
 			}
 			w.WriteHeaders(response.GetDefaultHeaders(data.ContentLength()))
 			w.WriteBody(data)
