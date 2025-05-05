@@ -166,25 +166,93 @@ func main() {
 		}
 	}
 
-	//=============================================================
+	videoHandler := func(w *response.Writer, req *request.Request) {
+		if req.RequestLine.RequestTarget != "/video" {
+			w.WriteStatusLine(response.StatusBadRequest)
+			data := response.PageData{
+				Title:   "400 Bad Request",
+				Heading: "Unsupported Request",
+				Message: "Your request honestly kinda sucked! Only /video requests are supported.",
+			}
+			w.WriteHeaders(response.GetDefaultHeaders(data.ContentLength()))
+			w.WriteBody(data)
+			return
+		}
+
+		// Respond with the assets/vim.mp4 video
+		videoPath := "assets/vim.mp4"
+		videoFile, err := os.Open(videoPath)
+		if err != nil {
+			w.WriteStatusLine(response.StatusInternalServerError)
+			data := response.PageData{
+				Title:   "500 Internal Server Error",
+				Heading: "Internal Server Error",
+				Message: "Couldn't open the video file.",
+			}
+			w.WriteHeaders(response.GetDefaultHeaders(data.ContentLength()))
+			w.WriteBody(data)
+			return
+		}
+		defer videoFile.Close()
+
+		// Get the file info to determine the size
+		videoInfo, err := videoFile.Stat()
+		if err != nil {
+			w.WriteStatusLine(response.StatusInternalServerError)
+			data := response.PageData{
+				Title:   "500 Internal Server Error",
+				Heading: "Internal Server Error",
+				Message: "Couldn't retrieve video file info.",
+			}
+			w.WriteHeaders(response.GetDefaultHeaders(data.ContentLength()))
+			w.WriteBody(data)
+			return
+		}
+
+		// Set headers for video response
+		headers := headers.Headers{
+			"Content-Type":   "video/mp4",
+			"Content-Length": fmt.Sprintf("%d", videoInfo.Size()),
+		}
+		w.WriteStatusLine(response.StatusOK)
+		w.WriteHeaders(headers)
+
+		// Stream the video file to the response
+		_, err = io.Copy(w, videoFile)
+		if err != nil {
+			log.Printf("Error streaming video: %v", err)
+		}
+	}
+
+	//========================== HANDLER SELECTION ===================================
 	//Use flag -t to enable the test handler
+	//Use flag -v to enable the video handler
+	//Use no flag to enable the chunked encoding handler
 	useTestHandler := flag.Bool("t", false, "use test handler")
+	useVideoHandler := flag.Bool("v", false, "use video handler")
 	flag.Parse()
-	if *useTestHandler {
+	if *useTestHandler { // test handler
 		server, err := server.Serve(port, handler)
 		if err != nil {
 			log.Fatalf("Error starting server: %v", err)
 		}
 		defer server.Close()
+		log.Println("Server started on port", port, "in Testing Mode")
+	} else if *useVideoHandler { // video handler
+		server, err := server.Serve(port, videoHandler)
+		if err != nil {
+			log.Fatalf("Error starting server: %v", err)
+		}
+		defer server.Close()
+		log.Println("Server started on port", port, "in Video Mode")
+	} else { // chunked encoding handler
+		server, err := server.Serve(port, httpbinHandler)
+		if err != nil {
+			log.Fatalf("Error starting server: %v", err)
+		}
+		defer server.Close()
+		log.Println("Server started on port", port, "in Chunked Encoding Mode")
 	}
-	//=============================================================
-
-	server, err := server.Serve(port, httpbinHandler)
-	if err != nil {
-		log.Fatalf("Error starting server: %v", err)
-	}
-	defer server.Close()
-	log.Println("Server started on port", port)
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
